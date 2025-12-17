@@ -1,0 +1,91 @@
+# Google Sheets Settings
+sheets:
+  product_sheet_name: "Product_Original"
+  color_mapping_sheet_name: "color_mapping"
+  columns:
+    color_id: "ColorID"
+    image_url: "ImageURL"
+    product_name: "ProductName"
+
+# Color Category Mapping
+# Format: CategoryName: [CategoryID, [Synonyms...]]
+color_categories:
+  "White系": [1, ["ホワイト", "オフホワイト", "アイボリー"]]
+  "Black系": [2, ["ブラック", "チャコール", "スモーク"]]
+  "Gray系": [3, ["グレー", "ライトグレー", "シルバー"]]
+  "Red系": [4, ["レッド", "ワインレッド", "バーガンディ"]]
+  "Blue系": [5, ["ブルー", "ネイビー", "ターコイズ"]]
+  "Green系": [6, ["グリーン", "カーキ", "オリーブ"]]
+  "Yellow系": [7, ["イエロー", "マスタード", "ゴールド"]]
+  "Orange系": [8, ["オレンジ", "コーラル", "テラコッタ"]]
+  "Pink系": [9, ["ピンク", "ローズ", "フクシア"]]
+  "Purple系": [10, ["パープル", "ラベンダー", "バイオレット"]]
+  "Beige系": [11, ["ベージュ", "サンド", "キャメル"]]
+  "Bronze系": [12, ["ブロンズ", "コッパー", "ブラウン"]]
+  "Multi系": [13, ["レインボー", "グラデーション", "マルチ"]]
+
+# Color Definitions (RGB) for Image Analysis
+# Used for distance calculation.
+# Extend this list to improve matching accuracy.
+color_definitions:
+  # White系
+  "ホワイト": [255, 255, 255]
+  "オフホワイト": [250, 250, 240]
+  "アイボリー": [255, 255, 240]
+  # Black系
+  "ブラック": [0, 0, 0]
+  "チャコール": [54, 69, 79]
+  "スモーク": [70, 70, 70]
+  # Gray系
+  "グレー": [128, 128, 128]
+  "ライトグレー": [211, 211, 211]
+  "シルバー": [192, 192, 192]
+  # Red系
+  "レッド": [255, 0, 0]
+  "ワインレッド": [139, 0, 0]
+  "バーガンディ": [128, 0, 32]
+  # Blue系
+  "ブルー": [0, 0, 255]
+  "ネイビー": [0, 0, 128]
+  "ターコイズ": [64, 224, 208]
+  # Green系
+  "グリーン": [0, 128, 0]
+  "カーキ": [128, 128, 0]
+  "オリーブ": [107, 142, 35]
+  # Yellow系
+  "イエロー": [255, 255, 0]
+  "マスタード": [255, 219, 88]
+  "ゴールド": [255, 215, 0]
+  # Orange系
+  "オレンジ": [255, 165, 0]
+  "コーラル": [255, 127, 80]
+  "ブラウン": [139, 69, 19]
+  "テラコッタ": [204, 78, 92]
+  # Pink系
+  "ピンク": [255, 192, 203]
+  "ローズ": [255, 102, 204]
+  "フクシア": [255, 0, 255]
+  # Purple系
+  "パープル": [128, 0, 128]
+  "ラベンダー": [230, 230, 250]
+  "バイオレット": [238, 130, 238]
+  # Beige系
+  "ベージュ": [245, 245, 220]
+  "サンド": [244, 164, 96]
+  "キャメル": [193, 154, 107]
+  # Bronze系
+  "ブロンズ": [205, 127, 50]
+  "コッパー": [184, 115, 51]
+  # Multi系 (Representative Gray for neutral matching)
+  "レインボー": [127, 127, 127]
+  "グラデーション": [127, 127, 127]
+  "マルチ": [127, 127, 127]
+
+# Analysis Parameters
+analysis:
+  image_download_timeout: 10
+  resize_width: 100
+  resize_height: 100
+  pixel_filter_min: 20
+  pixel_filter_max: 230
+  kmeans_k: 3

@@ -1,0 +1,10 @@
+gspread
+google-api-python-client
+google-auth-httplib2
+google-auth-oauthlib
+opencv-python-headless
+numpy
+requests
+pyyaml
+python-dotenv
+pytest
