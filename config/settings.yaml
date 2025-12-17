@@ -83,6 +83,7 @@ color_definitions:
 
 # Analysis Parameters
 analysis:
+  use_rembg: true
   image_download_timeout: 10
   resize_width: 100
   resize_height: 100

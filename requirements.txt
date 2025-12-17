@@ -8,3 +8,6 @@ requests
 pyyaml
 python-dotenv
 pytest
+rembg
+onnxruntime
+
