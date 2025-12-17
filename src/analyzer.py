@@ -1,19 +1,34 @@
+```python
 import cv2
 import numpy as np
 import requests
 from .utils import get_rgb_from_color_name
+
+try:
+    from rembg import remove
+    REMBG_AVAILABLE = True
+except ImportError:
+    REMBG_AVAILABLE = False
+    print("⚠️ rembg module not found. Background removal will be disabled.")
 
 class ImageAnalyzer:
     def __init__(self, config):
         self.config = config
         self.analysis_config = config.get("analysis", {})
         self.color_categories = config.get("color_categories", {})
+        self.use_rembg = self.analysis_config.get("use_rembg", False)
+        
+        if self.use_rembg and not REMBG_AVAILABLE:
+            print("⚠️ use_rembg is True but rembg library is not installed. Falling back to simple analysis.")
+            self.use_rembg = False
 
     def download_image(self, image_url):
         timeout = self.analysis_config.get("image_download_timeout", 10)
         try:
             resp = requests.get(image_url, timeout=timeout)
             resp.raise_for_status()
+            # If using rembg, we might want the raw bytes or decode carefully
+            # cv2.imdecode returns BGR.
             arr = np.frombuffer(resp.content, dtype=np.uint8)
             img = cv2.imdecode(arr, cv2.IMREAD_COLOR)
             return img
@@ -60,6 +75,25 @@ class ImageAnalyzer:
                     best_cat = cat
         return best_cat
 
+    def remove_background(self, img):
+        """
+        Use rembg to remove background.
+        Input: BGR image (OpenCV format)
+        Output: Masked image with transparency info, or list of valid pixels.
+        """
+        # rembg expects RGB or byte input, returns RGBA
+        # Convert BGR to RGB
+        img_rgb = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
+        
+        try:
+            # remove() returns the image with alpha channel
+            output = remove(img_rgb)
+            # output is a numpy array (H, W, 4) -> R, G, B, A
+            return output
+        except Exception as e:
+            print(f"⚠️ Background removal failed: {e}")
+            return None
+
     def analyze(self, image_url):
         img = self.download_image(image_url)
         if img is None:
@@ -68,29 +102,89 @@ class ImageAnalyzer:
         resize_w = self.analysis_config.get("resize_width", 100)
         resize_h = self.analysis_config.get("resize_height", 100)
         
-        resized = cv2.resize(img, (resize_w, resize_h))
-        h, w, _ = resized.shape
-        margin = 30
-        
-        # Center crop to avoid background noise
-        if h > 2 * margin and w > 2 * margin:
-            center = resized[margin:h-margin, margin:w-margin]
+        # If rembg is enabled
+        if self.use_rembg:
+            # rembg is expensive, run it on original size (or slightly smaller for speed) before resizing?
+            # Re-sizing BEFORE rembg might hurt accuracy of edge detection.
+            # But high-res rembg is slow.
+            # For 128x128 output, maybe we don't need 4K input. 
+            # Let's resize to a reasonable intermediate like 300x300, then rembg, then filter.
+            
+            # For speed, let's keep original unless it's huge
+            h, w = img.shape[:2]
+            if h > 500 or w > 500:
+                 img = cv2.resize(img, (500, 500))
+
+            output_rgba = self.remove_background(img)
+            
+            if output_rgba is not None:
+                # Extract pixels where Alpha > 0
+                # Filter out transparent pixels
+                # output_rgba is (H, W, 4)
+                # Flatten
+                flat = output_rgba.reshape(-1, 4)
+                # Filter alpha > 10 (allow some semi-transparent edge to be ignored)
+                valid_pixels = flat[flat[:, 3] > 10]
+                
+                if len(valid_pixels) > 0:
+                    # Valid pixels are [R, G, B, A]
+                    # We need [B, G, R] for OpenCV processing consistency OR just use [R, G, B] if we align logic.
+                    # Current downstream uses `rgb_converted` logic assuming BGR input for Kmeans.
+                    # Let's standardize on RGB for Clustering to avoid confusion.
+                    
+                    # Take RGB part
+                    pix = valid_pixels[:, :3]
+                    
+                    # Already RGB because rembg input was RGB and output is RGB
+                    # So `pix` is RGB
+                    
+                    # Skip the "filtered" logic (p_min/p_max) if we trust rembg?
+                    # The original filtered logic removed "white background" and "black background" by brightness.
+                    # With rembg, we shouldn't filter by brightness (a white shirt is valid!).
+                    # So we skip brightness filter.
+                    
+                    filtered = pix
+                else:
+                    # Fallback if rembg removed everything?
+                    filtered = []
+            else:
+                # Fallback to standard flow
+                filtered = []
         else:
-            center = resized
+            # Standard Flow
+            resized = cv2.resize(img, (resize_w, resize_h))
+            h, w, _ = resized.shape
+            margin = 30
+            
+            if h > 2 * margin and w > 2 * margin:
+                center = resized[margin:h-margin, margin:w-margin]
+            else:
+                center = resized
 
-        if center.size == 0:
-            center = resized
+            if center.size == 0:
+                center = resized
 
-        pix = center.reshape(-1, 3)
-        filtered = []
-        p_min = self.analysis_config.get("pixel_filter_min", 20)
-        p_max = self.analysis_config.get("pixel_filter_max", 230)
+            # Is center BGR? Yes.
+            # Convert to RGB for consistency with rembg path? 
+            # Original code logic:
+            #   pix = center.reshape(-1, 3) (BGR)
+            #   loops pixels
+            #   centers (BGR)
+            #   rgb = (centers[2], centers[1], centers[0]) (RGB)
+            
+            # Let's convert to RGB here to unify paths
+            center_rgb = cv2.cvtColor(center, cv2.COLOR_BGR2RGB)
+            pix = center_rgb.reshape(-1, 3)
 
-        for p in pix:
-            avg = np.mean(p)
-            if p_min < avg < p_max:
-                filtered.append(p)
-        
+            p_min = self.analysis_config.get("pixel_filter_min", 20)
+            p_max = self.analysis_config.get("pixel_filter_max", 230)
+            
+            filtered = []
+            for p in pix:
+                avg = np.mean(p)
+                if p_min < avg < p_max:
+                    filtered.append(p)
+
         if len(filtered) < 10:
             return "N/A"
 
@@ -98,7 +192,6 @@ class ImageAnalyzer:
         Z = np.float32(filtered)
         K = self.analysis_config.get("kmeans_k", 3)
         
-        # Criteria: (type, max_iter, epsilon)
         criteria = (cv2.TERM_CRITERIA_EPS + cv2.TERM_CRITERIA_MAX_ITER, 10, 1.0)
         
         try:
@@ -106,62 +199,18 @@ class ImageAnalyzer:
             counts = np.bincount(labels.flatten())
             dom_idx = np.argmax(counts)
             dom_color = centers[dom_idx]
-            rgb = tuple(map(int, dom_color)) # (R, G, B) because opencv imdecode default is BGR, but we handled that? 
-            # Wait, cv2.imdecode(arr, cv2.IMREAD_COLOR) returns BGR in standard OpenCV. 
-            # But the original code was treating it as... wait.
-            # Original: img = cv2.imdecode(..., cv2.IMREAD_COLOR) -> BGR
-            # Original: bgr = np.uint8([[[rgb[2], rgb[1], rgb[0]]]]) -> used for HSV conversion
-            # Original: match_color_to_category(rgb) -> compares with RGB ref.
             
-            # Let's fix Color space to be consistent. 
-            # Downloaded image is BGR.
-            # Convert to RGB for consistency with config (which is RGB).
-            rgb_converted = (int(dom_color[2]), int(dom_color[1]), int(dom_color[0]))
-            
-            # BUT, look at original code:
-            # dom_color = centers[dom_idx]
-            # rgb = tuple(map(int, dom_color))
-            # match_color_to_category(rgb)
-            # In original code, `cv2.imdecode` returns BGR. So `dom_color` is BGR.
-            # But `match_color_to_category` compares `rgb` (which is BGR) with `ref_rgb` (from `get_rgb_from_color_name` which is RGB).
-            # This means the original code might have been comparing BGR to RGB?
-            # Or `get_rgb_from_color_name` returns BGR?
-            # Original: "ホワイト": (255, 255, 255) (Same)
-            # Original: "レッド": (255, 0, 0) -> R=255.
-            # If `img` is BGR, red pixel is (0, 0, 255).
-            # If we compare (0, 0, 255) [BGR-Red] with (255, 0, 0) [RGB-Red], distance is huge.
-            # Wait, let's verify original `download_image`:
-            # `img = cv2.imdecode(arr, cv2.IMREAD_COLOR)` -> BGR.
-            # Then clustering is done on BGR.
-            # So `rgb` variable in original code is actually BGR.
-            # The reference map has `"レッド": (255, 0, 0)`.
-            # If input is Red (0,0,255), distance to (255,0,0) is sqrt(255^2 + 0 + 255^2). Big.
-            # Distance to Blue (0,0,255) is 0.
-            # So the original code seems to have a bug where it treats BGR as RGB or vice versa, OR the reference map is also BGR?
-            # "レッド": (255, 0, 0). In RGB this is Red. In BGR this is Blue.
-            # "ブルー": (0, 0, 255). In RGB this is Blue. In BGR this is Red.
-            # So if the original code worked, maybe it was lucky or I am misinterpreting.
-            
-            # HOWEVER, I should probably FIX this to be correct in the refactor.
-            # I will scan BGR image, convert the dominant color to RGB, and compare with RGB config.
-            
-            # Let's fix this: 
-            # 1. Image is BGR. 
-            # 2. KMeans on BGR. 
-            # 3. Dominant Center is BGR.
-            # 4. Convert BGR to RGB -> (B, G, R) to (R, G, B).
-            # 5. `match_color_to_category` expects RGB.
-            
-            rgb_final = (int(dom_color[2]), int(dom_color[1]), int(dom_color[0]))
+            # `dom_color` is RGB now (because we unified input to be RGB)
+            rgb_final = (int(dom_color[0]), int(dom_color[1]), int(dom_color[2]))
             
             cat = self.match_color_to_category(rgb_final)
             if not cat:
                 return "N/A"
             
-            # Return "=ID"
             cat_id = self.color_categories[cat][0]
             return f"={cat_id}"
 
         except Exception as e:
             print(f"Error during analysis: {e}")
             return "N/A"
+```

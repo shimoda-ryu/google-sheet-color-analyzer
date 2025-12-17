@@ -1,19 +1,23 @@
 # Google Sheets Color Analyzer
 
+[![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://github.com/shimoda-ryu/google-sheet-color-analyzer/blob/main/notebooks/Google_Colab_Runner.ipynb)
+
 Googleスプレッドシート上の商品画像URLを読み込み、OpenCVを使用して主要カラーを自動判定し、書き戻すツールです。
 
 ## ✨ 特長
 - **設定の外部化:** `config/settings.yaml` でシート名、列名、カラー定義を自由に編集可能。
 - **モダンな設計:** ソースコードをモジュール化 (`src/`) し、メンテナンス性を高めている。
 - **安全:** 機密情報は `.env` ファイルで管理。
+- **高精度背景除去 (New):** AI (`rembg`) を使用して背景を自動除去し、商品そのものの色を高精度に判定します (要設定ON)。
 
 ## 📁 ディレクトリ構成
 ```text
 google-sheet-color-analyzer/
-├── src/           # ソースコード
-├── config/        # 設定ファイル (settings.yaml)
-├── tests/         # テストコード
-├── .env.example   # 環境変数のテンプレート
+├── src/
+├── config/
+├── notebooks/     # Google Colab用ノートブック (ブラウザで実行可能)
+├── tests/
+├── .env.example
 └── requirements.txt
 ```
 
